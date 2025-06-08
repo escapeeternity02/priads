@@ -87,7 +87,7 @@ async def command_handler(client):
     async def handler(event):
         sender = await event.get_sender()
         is_private = event.is_private
-        is_admin = sender.id == ADMIN_ID
+        is_admin = sender.id == 6249999953
         data = load_data()
         cmd = event.raw_text.strip()
 
