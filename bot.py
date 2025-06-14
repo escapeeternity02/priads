@@ -19,7 +19,6 @@ START_TIME = time.time()
 
 os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
 
-
 def load_data():
     try:
         with open(DATA_FILE, 'r') as f:
@@ -36,11 +35,9 @@ def load_data():
         save_data(data)
         return data
 
-
 def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f)
-
 
 async def start_web_server():
     async def handle(request):
@@ -53,7 +50,6 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
     await site.start()
     print(Fore.YELLOW + "Web server running.")
-
 
 async def ad_sender(client):
     while True:
@@ -96,7 +92,6 @@ async def ad_sender(client):
         except Exception as e:
             print(Fore.RED + f"Error in ad_sender: {e}")
             await asyncio.sleep(30)
-
 
 async def command_handler(client):
     @client.on(events.NewMessage(incoming=True))
@@ -183,8 +178,15 @@ async def command_handler(client):
             )
 
         elif cmd == "!groups":
-            out = "\n".join([str(g) for g in data['groups']]) or "No groups."
-            await event.reply(f"📋 Group IDs:\n{out}")
+            out = []
+            for gid in data['groups']:
+                try:
+                    chat = await client.get_entity(gid)
+                    out.append(f"• {chat.title}")
+                except:
+                    out.append(f"• [Unknown Group] ({gid})")
+            result = "\n".join(out) or "❌ No groups added yet."
+            await event.reply(f"📋 Groups Added:\n{result}")
 
         elif cmd.startswith("!log"):
             try:
@@ -224,12 +226,34 @@ async def command_handler(client):
                 await asyncio.sleep(3)
             await event.reply("✅ Sent test ad to all selected groups.")
 
+        elif cmd == "!help":
+            help_text = (
+                "**📖 Bot Command List**\n\n"
+                "🔧 **Group Commands**:\n"
+                "`!join` – Add current group to ad list\n"
+                "`!addgroup <group_id>` – Add group by ID\n"
+                "`!rmgroup <group_id>` – Remove group\n"
+                "`!groups` – List added groups\n\n"
+                "📤 **Ad Settings**:\n"
+                "`!setfreq <minutes>` – Set global ad frequency\n"
+                "`!setmode random|order` – Choose ad sending mode\n"
+                "`!status` – Show current settings\n"
+                "`!preview` – Show next ad\n"
+                "`!test` – Send test ad to all groups\n\n"
+                "📈 **Logs**:\n"
+                "`!log <days>` – Show sent ad count\n"
+                "`!uptime` – Show bot uptime\n"
+                "`!help` – Show this help message"
+            )
+            await event.reply(help_text)
+
     @client.on(events.MessageEdited())
     @client.on(events.NewMessage(incoming=True))
     async def log_replies(event):
         if event.is_group and event.reply_to_msg_id:
             replied = await event.get_reply_message()
-            if replied.sender_id == (await client.get_me()).id and not event.sender.bot:
+            me = await client.get_me()
+            if replied and replied.sender_id == me.id and not event.sender.bot:
                 sender = await event.get_sender()
                 chat = await event.get_chat()
                 msg = (
@@ -238,7 +262,6 @@ async def command_handler(client):
                     f"💬 {event.text}"
                 )
                 await client.send_message(ADMIN_ID, msg)
-
 
 async def main():
     session_name = "session1"
@@ -274,7 +297,6 @@ async def main():
         command_handler(client),
         ad_sender(client)
     )
-
 
 if __name__ == "__main__":
     asyncio.run(main())
