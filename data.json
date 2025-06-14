@@ -1,6 +1,7 @@
 {
   "groups": [],
-  "frequency": 45,
+  "frequency": 5,
   "mode": "random",
-  "last_sent_ad_index": 0
+  "last_sent_ad_index": 0,
+  "log": []
 }
