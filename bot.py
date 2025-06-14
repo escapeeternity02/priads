@@ -20,7 +20,6 @@ os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
 start_time = time.time()
 
 # Load and save data
-
 def load_data():
     try:
         with open(DATA_FILE, 'r') as f:
@@ -59,7 +58,7 @@ async def ad_sender(client):
             ads = await client(GetHistoryRequest(peer="me", limit=20, offset_id=0,
                                                  offset_date=None, max_id=0, min_id=0,
                                                  add_offset=0, hash=0))
-            saved_messages = [m for m in ads.messages if m.message or m.media]
+            saved_messages = [m for m in ads.messages if getattr(m, 'message', None) or getattr(m, 'media', None)]
 
             if not saved_messages:
                 print(Fore.RED + "No saved messages found.")
@@ -115,7 +114,6 @@ async def command_handler(client):
                     await asyncio.sleep(1)
             return
 
-        # Admin Commands
         if cmd.startswith("!addgroup"):
             try:
                 gid = int(cmd.split()[1])
@@ -171,7 +169,10 @@ async def command_handler(client):
                 await event.reply("❌ Usage: !setmode <random/order>")
 
         elif cmd == "!status":
-            uptime = str(datetime.now() - datetime.fromtimestamp(start_time)).split('.')[0]
+            uptime_seconds = int(time.time() - start_time)
+            hours, rem = divmod(uptime_seconds, 3600)
+            minutes, seconds = divmod(rem, 60)
+            uptime = f"{hours}h {minutes}m {seconds}s"
             await event.reply(f"👥 Groups: {data['groups']}\n📤 Mode: {data['mode']}\n⏱ Frequency: {data['frequency']} min\n🕒 Uptime: {uptime}")
 
         elif cmd == "!groups":
@@ -179,19 +180,27 @@ async def command_handler(client):
 
         elif cmd == "!test":
             try:
-                ads = await client(GetHistoryRequest(peer="me", limit=1, offset_id=0,
+                ads = await client(GetHistoryRequest(peer="me", limit=20, offset_id=0,
                                                      offset_date=None, max_id=0, min_id=0,
                                                      add_offset=0, hash=0))
-                if not ads.messages:
-                    await event.reply("❌ No saved message found.")
+                valid_ads = [m for m in ads.messages if m.message or m.media]
+                if not valid_ads:
+                    await event.reply("❌ No saved messages to forward.")
                     return
-                msg = ads.messages[0]
+                msg = valid_ads[0]
                 for gid in data["groups"]:
                     await client.forward_messages(gid, msg.id, "me")
                     await asyncio.sleep(3)
                 await event.reply("✅ Sent test ad to all selected groups.")
             except Exception as e:
                 await event.reply(f"❌ Error: {e}")
+
+        elif cmd.startswith("!log"):
+            try:
+                days = int(cmd.split()[1]) if len(cmd.split()) > 1 else 1
+                await event.reply(f"📚 Logs for last {days} day(s) not yet implemented.")
+            except:
+                await event.reply("❌ Usage: !log <days>")
 
         elif cmd.startswith("!dm"):
             parts = cmd.split(maxsplit=2)
@@ -241,6 +250,7 @@ async def command_handler(client):
                 "!join – Add group from within\n"
                 "!preview – Show next ad\n"
                 "!welcome <msg> – Set auto-DM reply\n"
+                "!log <days> – (Planned) Show delivery logs\n"
                 "!help – Show this menu"
             )
 
