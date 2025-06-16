@@ -1,4 +1,4 @@
-import os
+    import os
 import json
 import asyncio
 import random
@@ -76,7 +76,7 @@ async def start_web_server():
 
 async def ad_sender(client):
     while True:
-        try:
+        try:f
             data = load_data()
             if not data.get("enabled", True):
                 await asyncio.sleep(10)
@@ -270,8 +270,19 @@ async def command_handler(client):
                 "!backup / !restore – Settings\n"
                 "!allgroup on|off – Toggle all groups")
 
-    @client.on(events.MessageReply())
-    async def log_group_replies(event):
+    @client.on(events.NewMessage())
+async def log_group_replies(event):
+    try:
+        if event.is_group and event.is_reply and not event.sender.bot:
+            sender = await event.get_sender()
+            group = await event.get_chat()
+            msg_text = event.message.message or "[non-text]"
+            log = f"🆕 Someone replied to ad in {group.title} ({group.id})\nFrom: {sender.id} - {sender.first_name}\nMessage: {msg_text}"
+            log_event(f"[REPLY] {group.id} {sender.id}: {msg_text}")
+            await client.send_message(ADMIN_ID, log)
+    except Exception as e:
+        log_event(f"[REPLY LOG ERROR] {e}")
+
         try:
             if event.is_group and not event.sender.bot:
                 sender = await event.get_sender()
