@@ -262,7 +262,6 @@ async def command_handler(client):
                 "!log <days> – Show logs\n"
                 "!addgroup <id> – Add group\n"
                 "!rmgroup <id> – Remove group\n"
-                ""
                 "!setmode random/order\n"
                 "!status – Show status\n"
                 "!preview – Preview next ad\n"
@@ -270,14 +269,14 @@ async def command_handler(client):
                 "!backup / !restore – Settings\n"
                 "!allgroup on|off – Toggle all groups")
 
-    @client.on(events.MessageReply())
+    @client.on(events.NewMessage())
     async def log_group_replies(event):
         try:
-            if event.is_group and not event.sender.bot:
+            if event.is_reply and event.is_group and not event.sender.bot:
                 sender = await event.get_sender()
                 group = await event.get_chat()
                 msg_text = event.message.message or "[non-text]"
-                log = f"\ud83d\udd01 Someone replied to ad in {group.title} ({group.id})\nFrom: {sender.id} - {sender.first_name}\nMessage: {msg_text}"
+                log = f"🆕 Someone replied to ad in {group.title} ({group.id})\nFrom: {sender.id} - {sender.first_name}\nMessage: {msg_text}"
                 log_event(f"[REPLY] {group.id} {sender.id}: {msg_text}")
                 await client.send_message(ADMIN_ID, log)
         except Exception as e:
