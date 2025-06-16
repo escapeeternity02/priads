@@ -91,7 +91,7 @@ async def ad_sender(client):
                 await asyncio.sleep(60)
                 continue
 
-            target_groups = data["groups"].keys() if not data.get("allgroup") else await client.get_dialogs()
+            target_groups = data["groups"].keys() if not data.get("allgroup") else [d.entity.id for d in await client.get_dialogs() if d.is_group]
             for gid in target_groups:
                 try:
                     gid = int(gid) if isinstance(gid, str) else gid
@@ -262,14 +262,26 @@ async def command_handler(client):
                 "!log <days> – Show logs\n"
                 "!addgroup <id> – Add group\n"
                 "!rmgroup <id> – Remove group\n"
-                "!setfreq [group] <m> – Set freq\n"
+                ""
                 "!setmode random/order\n"
                 "!status – Show status\n"
                 "!preview – Preview next ad\n"
                 "!dm <user> <msg> – DM user\n"
                 "!backup / !restore – Settings\n"
-                "!allgroup on|off – Toggle all groups"
-            )
+                "!allgroup on|off – Toggle all groups")
+
+    @client.on(events.MessageReply())
+    async def log_group_replies(event):
+        try:
+            if event.is_group and not event.sender.bot:
+                sender = await event.get_sender()
+                group = await event.get_chat()
+                msg_text = event.message.message or "[non-text]"
+                log = f"\ud83d\udd01 Someone replied to ad in {group.title} ({group.id})\nFrom: {sender.id} - {sender.first_name}\nMessage: {msg_text}"
+                log_event(f"[REPLY] {group.id} {sender.id}: {msg_text}")
+                await client.send_message(ADMIN_ID, log)
+        except Exception as e:
+            log_event(f"[REPLY LOG ERROR] {e}")
 
 # Main function
 
@@ -293,7 +305,10 @@ async def main():
     if not await client.is_user_authorized():
         return
 
-    await client.send_message(ADMIN_ID, "✅ AdBot is now online.")
+    try:
+        await client.send_message(ADMIN_ID, "✅ AdBot is now online.")
+    except Exception as e:
+        log_event(f"[ERROR] Failed to notify admin: {e}")
 
     await asyncio.gather(
         start_web_server(),
