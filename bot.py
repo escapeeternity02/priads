@@ -18,17 +18,14 @@ BACKUP_FILE = "backup.json"
 ADMIN_ID = 6249999953
 
 os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
-
 start_time = time.time()
 
 # Logging
-
 def log_event(text):
     with open(LOG_FILE, "a") as f:
         f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {text}\n")
 
 # Data functions
-
 def load_data():
     try:
         with open(DATA_FILE, 'r') as f:
@@ -61,7 +58,6 @@ def restore_data():
     save_data(data)
 
 # Web server
-
 async def start_web_server():
     async def handle(request):
         return web.Response(text="✅ Bot is running on Render")
@@ -73,7 +69,6 @@ async def start_web_server():
     await site.start()
 
 # Ad sender
-
 async def ad_sender(client):
     while True:
         try:
@@ -115,7 +110,6 @@ async def ad_sender(client):
             await asyncio.sleep(30)
 
 # Command handler
-
 async def command_handler(client):
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
@@ -125,7 +119,6 @@ async def command_handler(client):
         cmd = event.raw_text.strip()
         is_admin = sender_id in data.get("admins", [])
 
-        # DM welcome message
         if event.is_private and not is_admin:
             await event.reply(data.get("welcome_message", "To buy anything DM @EscapeEternity! This is just a Bot."))
             return
@@ -133,7 +126,6 @@ async def command_handler(client):
         if not is_admin:
             return
 
-        # Admin commands
         if cmd == "!start":
             data["enabled"] = True
             save_data(data)
@@ -272,18 +264,39 @@ async def command_handler(client):
     @client.on(events.NewMessage())
     async def log_group_replies(event):
         try:
-            if event.is_reply and event.is_group and not event.sender.bot:
+            if getattr(event.sender, 'bot', False):
+                return
+
+            if event.is_group and event.is_reply:
+                reply_msg = await event.get_reply_message()
+                if reply_msg and reply_msg.sender_id == (await client.get_me()).id:
+                    sender = await event.get_sender()
+                    group = await event.get_chat()
+                    msg_text = event.message.message or "[non-text]"
+                    log = (
+                        f"🆕 Reply to bot ad in {group.title} ({group.id})\n"
+                        f"👤 From: {sender.first_name} ({sender.id})\n"
+                        f"💬 Message: {msg_text}"
+                    )
+                    log_event(f"[REPLY] {group.id} {sender.id}: {msg_text}")
+                    await client.send_message(ADMIN_ID, log)
+
+            elif event.is_private:
                 sender = await event.get_sender()
-                group = await event.get_chat()
-                msg_text = event.message.message or "[non-text]"
-                log = f"🆕 Someone replied to ad in {group.title} ({group.id})\nFrom: {sender.id} - {sender.first_name}\nMessage: {msg_text}"
-                log_event(f"[REPLY] {group.id} {sender.id}: {msg_text}")
-                await client.send_message(ADMIN_ID, log)
+                data = load_data()
+                if sender.id not in data.get("admins", []):
+                    msg_text = event.message.message or "[non-text]"
+                    log = (
+                        f"📥 New DM from {sender.first_name} ({sender.id})\n"
+                        f"💬 Message: {msg_text}"
+                    )
+                    log_event(f"[DM] {sender.id}: {msg_text}")
+                    await client.send_message(ADMIN_ID, log)
+
         except Exception as e:
             log_event(f"[REPLY LOG ERROR] {e}")
 
 # Main function
-
 async def main():
     session_name = "session1"
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
