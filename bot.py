@@ -3,7 +3,7 @@ import json
 import asyncio
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from telethon import TelegramClient, events
 from telethon.tl.functions.messages import GetHistoryRequest
 from aiohttp import web
@@ -13,13 +13,17 @@ init(autoreset=True)
 
 CREDENTIALS_FOLDER = "sessions"
 DATA_FILE = "data.json"
+LOG_FILE = "ad_log.txt"
 ADMIN_ID = 6249999953
 
 os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
 
 start_time = time.time()
 
-# Load and save data
+def log_event(text):
+    with open(LOG_FILE, "a") as f:
+        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {text}\n")
+
 def load_data():
     try:
         with open(DATA_FILE, 'r') as f:
@@ -31,7 +35,9 @@ def load_data():
             "frequency": 5,
             "mode": "random",
             "last_sent_ad_index": 0,
-            "welcome_message": "To buy anything DM @EscapeEternity! This is just a Bot."
+            "welcome_message": "To buy anything DM @EscapeEternity! This is just a Bot.",
+            "admins": [ADMIN_ID],
+            "enabled": True
         }
         save_data(data)
         return data
@@ -55,6 +61,10 @@ async def ad_sender(client):
     while True:
         try:
             data = load_data()
+            if not data.get("enabled", True):
+                await asyncio.sleep(10)
+                continue
+
             ads = await client(GetHistoryRequest(peer="me", limit=20, offset_id=0,
                                                  offset_date=None, max_id=0, min_id=0,
                                                  add_offset=0, hash=0))
@@ -65,7 +75,6 @@ async def ad_sender(client):
                 await asyncio.sleep(60)
                 continue
 
-            print(Fore.CYAN + f"Sending ads to {len(data['groups'])} group(s)...")
             for gid in data["groups"]:
                 try:
                     if data["mode"] == "random":
@@ -76,7 +85,9 @@ async def ad_sender(client):
                         data["last_sent_ad_index"] += 1
                         save_data(data)
 
-                    await client.forward_messages(gid, msg.id, "me")
+                    fwd_msg = await client.forward_messages(gid, msg.id, "me")
+                    link = f"https://t.me/c/{str(gid)[4:]}/{fwd_msg.id}" if str(gid).startswith("-100") else f"(no link)"
+                    log_event(f"[FORWARD] To {gid} | Link: {link} | ID: {msg.id} | Text: {msg.message[:100] if msg.message else '[media]'}")
                     print(Fore.GREEN + f"Forwarded ad to {gid}")
                     await asyncio.sleep(random.uniform(10, 20))
                 except Exception as e:
@@ -92,29 +103,62 @@ async def command_handler(client):
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
         sender = await event.get_sender()
-        is_private = event.is_private
         sender_id = sender.id
         data = load_data()
         cmd = event.raw_text.strip()
+        is_admin = sender_id in data.get("admins", [])
 
-        if is_private:
-            if sender_id != ADMIN_ID:
-                await event.reply(data.get("welcome_message", "To buy anything DM @EscapeEternity! This is just a Bot."))
-
-        if sender_id != ADMIN_ID:
-            if cmd == "!ads":
-                ads = await client(GetHistoryRequest(peer="me", limit=10, offset_id=0, offset_date=None,
-                                                     max_id=0, min_id=0, add_offset=0, hash=0))
-                saved_messages = [m for m in ads.messages if m.message or m.media]
-                if not saved_messages:
-                    await event.reply("❌ No ads available.")
-                    return
-                for msg in saved_messages:
-                    await client.send_message(event.sender_id, msg)
-                    await asyncio.sleep(1)
+        if event.is_private and not is_admin:
+            await event.reply(data.get("welcome_message", "To buy anything DM @EscapeEternity! This is just a Bot."))
             return
 
-        if cmd.startswith("!addgroup"):
+        if not is_admin:
+            return
+
+        if cmd == "!start":
+            data["enabled"] = True
+            save_data(data)
+            await event.reply("▶️ Ad sending resumed.")
+
+        elif cmd == "!stop":
+            data["enabled"] = False
+            save_data(data)
+            await event.reply("⏸ Ad sending paused.")
+
+        elif cmd == "!uptime":
+            uptime_seconds = int(time.time() - start_time)
+            hours, rem = divmod(uptime_seconds, 3600)
+            minutes, seconds = divmod(rem, 60)
+            await event.reply(f"⏱ Uptime: {hours}h {minutes}m {seconds}s")
+
+        elif cmd.startswith("!log"):
+            try:
+                days = int(cmd.split()[1])
+                cutoff = datetime.now() - timedelta(days=days)
+                with open(LOG_FILE, 'r') as f:
+                    lines = [line for line in f.readlines() if datetime.strptime(line[1:20], '%Y-%m-%d %H:%M:%S') > cutoff]
+                    if not lines:
+                        await event.reply("📄 No logs found for requested period.")
+                        return
+                    chunks = [''.join(lines[i:i+10]) for i in range(0, len(lines), 10)]
+                    for chunk in chunks:
+                        await client.send_message(sender_id, f"📋 Log chunk:\n{chunk}")
+            except:
+                await event.reply("❌ Usage: !log <days>")
+
+        elif cmd.startswith("!addadmin"):
+            try:
+                uid = int(cmd.split()[1])
+                if uid not in data["admins"]:
+                    data["admins"].append(uid)
+                    save_data(data)
+                    await event.reply(f"✅ Added admin {uid}")
+                else:
+                    await event.reply("Already an admin.")
+            except:
+                await event.reply("❌ Usage: !addadmin <user_id>")
+
+        elif cmd.startswith("!addgroup"):
             try:
                 gid = int(cmd.split()[1])
                 if gid not in data["groups"]:
@@ -173,7 +217,7 @@ async def command_handler(client):
             hours, rem = divmod(uptime_seconds, 3600)
             minutes, seconds = divmod(rem, 60)
             uptime = f"{hours}h {minutes}m {seconds}s"
-            await event.reply(f"👥 Groups: {data['groups']}\n📤 Mode: {data['mode']}\n⏱ Frequency: {data['frequency']} min\n🕒 Uptime: {uptime}")
+            await event.reply(f"👥 Groups: {data['groups']}\n📤 Mode: {data['mode']}\n⏱ Frequency: {data['frequency']} min\n🕒 Uptime: {uptime}\n🚦 Active: {data.get('enabled', True)}")
 
         elif cmd == "!groups":
             await event.reply("📢 Added Groups:\n" + '\n'.join([str(g) for g in data["groups"]]) if data["groups"] else "No groups added.")
@@ -195,13 +239,6 @@ async def command_handler(client):
             except Exception as e:
                 await event.reply(f"❌ Error: {e}")
 
-        elif cmd.startswith("!log"):
-            try:
-                days = int(cmd.split()[1]) if len(cmd.split()) > 1 else 1
-                await event.reply(f"📚 Logs for last {days} day(s) not yet implemented.")
-            except:
-                await event.reply("❌ Usage: !log <days>")
-
         elif cmd.startswith("!dm"):
             parts = cmd.split(maxsplit=2)
             if len(parts) < 3:
@@ -211,7 +248,9 @@ async def command_handler(client):
             message = parts[2]
             try:
                 entity = await client.get_entity(target)
-                await client.send_message(entity, message)
+                sent = await client.send_message(entity, message)
+                link = f"https://t.me/c/{str(sent.chat_id)[4:]}/{sent.id}" if str(sent.chat_id).startswith("-100") else f"(no link)"
+                log_event(f"[DM] To {target} | Link: {link} | Text: {message[:100]}")
                 await event.reply(f"✅ Message sent to {target}")
             except Exception as e:
                 await event.reply(f"❌ Failed to send message: {e}")
@@ -239,6 +278,9 @@ async def command_handler(client):
         elif cmd == "!help":
             await event.reply(
                 "🛠 Available Commands:\n"
+                "!start / !stop – Resume or pause ad delivery\n"
+                "!uptime – Bot uptime\n"
+                "!log <days> – Show ad logs\n"
                 "!addgroup <id> – Add group ID\n"
                 "!rmgroup <id> – Remove group ID\n"
                 "!setfreq <minutes> – Set ad interval\n"
@@ -250,7 +292,7 @@ async def command_handler(client):
                 "!join – Add group from within\n"
                 "!preview – Show next ad\n"
                 "!welcome <msg> – Set auto-DM reply\n"
-                "!log <days> – (Planned) Show delivery logs\n"
+                "!addadmin <id> – Add more admins\n"
                 "!help – Show this menu"
             )
 
