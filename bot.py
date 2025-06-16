@@ -270,7 +270,7 @@ async def command_handler(client):
                 "!backup / !restore – Settings\n"
                 "!allgroup on|off – Toggle all groups")
 
-    @client.on(events.NewMessage())
+   @client.on(events.NewMessage())
 async def log_group_replies(event):
     try:
         if event.is_group and event.is_reply and not event.sender.bot:
